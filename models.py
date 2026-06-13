@@ -24,7 +24,7 @@ from sklearn.metrics import (
 DATA_PATH   = os.path.join(os.path.dirname(__file__), "../data/sensor_data.csv")
 MODELS_DIR  = os.path.join(os.path.dirname(__file__), "../models")
 
-# Rolling window features: adds mean/std over last N samples per sensor
+
 WINDOW_SIZES = [3, 6, 12]
 
 SENSOR_COLS_BY_TYPE = {
@@ -62,9 +62,9 @@ def train_equipment_models(eq_type, df_eq):
     df_feat, feature_cols = engineer_features(df_eq, sensor_cols)
     X = df_feat[feature_cols].values
     y_cls = df_feat["label"].values
-    y_rul = df_feat["rul_days"].values.clip(0, 90)  # cap RUL at 90 days
+    y_rul = df_feat["rul_days"].values.clip(0, 90)  
 
-    # ── 1. IsolationForest (anomaly detection) ────────────────────────────────
+    
     print("\n  [1/3] Training IsolationForest (anomaly detection)...")
     scaler_iso = StandardScaler()
     X_normal   = X[y_cls == 0]
@@ -78,20 +78,16 @@ def train_equipment_models(eq_type, df_eq):
     )
     iso.fit(X_scaled)
     scores = iso.decision_function(scaler_iso.transform(X))
-    # Anomaly score: convert so higher = more anomalous (0–1 range approx)
+
     anomaly_scores = 1 - (scores - scores.min()) / (scores.max() - scores.min() + 1e-9)
     print(f"    Mean anomaly score (failures): {anomaly_scores[y_cls==1].mean():.3f}")
     print(f"    Mean anomaly score (normal):   {anomaly_scores[y_cls==0].mean():.3f}")
 
     joblib.dump(iso, os.path.join(out_dir, "isolation_forest.pkl"))
     joblib.dump(scaler_iso, os.path.join(out_dir, "scaler_iso.pkl"))
-
-    # ── 2. RandomForest classifier ────────────────────────────────────────────
     print("\n  [2/3] Training RandomForest (failure classification)...")
     scaler_cls = StandardScaler()
     X_cls_scaled = scaler_cls.fit_transform(X)
-
-    # Class weights to handle imbalance (failures are rare)
     class_weight = {0: 1, 1: int((y_cls == 0).sum() / max((y_cls == 1).sum(), 1))}
     X_train, X_test, y_train, y_test = train_test_split(
         X_cls_scaled, y_cls, test_size=0.2, random_state=42, stratify=y_cls
@@ -109,14 +105,10 @@ def train_equipment_models(eq_type, df_eq):
     auc = roc_auc_score(y_test, y_proba)
     print(f"    AUC-ROC: {auc:.4f}")
     print(f"    {classification_report(y_test, y_pred, target_names=['Normal','Failure'], zero_division=0)}")
-
     joblib.dump(clf, os.path.join(out_dir, "classifier.pkl"))
     joblib.dump(scaler_cls, os.path.join(out_dir, "scaler_cls.pkl"))
-
-    # ── 3. GradientBoosting RUL regressor ────────────────────────────────────
     print("\n  [3/3] Training GradientBoosting (RUL regression)...")
-    # Only train on samples where failure is upcoming (RUL < 90 days)
-    mask = y_rul < 90
+       mask = y_rul < 90
     if mask.sum() < 50:
         print("    Not enough near-failure samples for RUL regression, skipping.")
         reg = None
@@ -142,8 +134,6 @@ def train_equipment_models(eq_type, df_eq):
 
         joblib.dump(reg, os.path.join(out_dir, "rul_regressor.pkl"))
         joblib.dump(scaler_rul, os.path.join(out_dir, "scaler_rul.pkl"))
-
-    # ── Save metadata ─────────────────────────────────────────────────────────
     meta = {
         "equipment_type": eq_type,
         "sensor_cols": sensor_cols,
@@ -157,16 +147,12 @@ def train_equipment_models(eq_type, df_eq):
     }
     with open(os.path.join(out_dir, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
-
     print(f"\n  Saved all artifacts to models/{eq_type}/")
     return meta
-
-
 def main():
     print("Loading sensor data...")
     df = pd.read_csv(DATA_PATH)
     print(f"  {len(df)} rows loaded")
-
     all_meta = {}
     for eq_type in SENSOR_COLS_BY_TYPE:
         df_eq = df[df["equipment_type"] == eq_type].copy()
@@ -175,17 +161,14 @@ def main():
             continue
         meta = train_equipment_models(eq_type, df_eq)
         all_meta[eq_type] = meta
-
     summary_path = os.path.join(MODELS_DIR, "summary.json")
     with open(summary_path, "w") as f:
         json.dump(all_meta, f, indent=2)
-
     print(f"\n{'='*50}")
     print("Training complete. Model summary:")
     for eq_type, meta in all_meta.items():
         print(f"  {eq_type:12s} | AUC: {meta['auc_roc']:.4f} | RUL MAE: {meta.get('rul_mae_days','N/A')} days")
     print(f"\nSummary saved to {summary_path}")
-
 
 if __name__ == "__main__":
     main()
