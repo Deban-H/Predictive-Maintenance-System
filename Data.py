@@ -20,7 +20,6 @@ EQUIPMENT = [
     {"id": "EQ-005", "name": "Turbine E",      "type": "turbine"},
 ]
 
-# Per-equipment sensor configs: (nominal_mean, nominal_std, failure_delta, unit)
 SENSOR_CONFIGS = {
     "compressor": {
         "temperature": (65.0, 2.0, +30.0, "°C"),
@@ -69,36 +68,35 @@ def generate_equipment_data(equip, days=365, samples_per_day=24):
     start = datetime(2024, 1, 1)
     timestamps = [start + timedelta(hours=i) for i in range(n_samples)]
 
-    # Schedule 3-5 failure events at random points (not too early, not too close)
+     
     n_failures = np.random.randint(3, 6)
     failure_indices = sorted(np.random.choice(
         range(int(n_samples * 0.15), int(n_samples * 0.95)),
         size=n_failures, replace=False
     ))
 
-    # Degradation window in samples (7-21 days * 24 samples/day)
+    
     deg_windows = [np.random.randint(7 * 24, 21 * 24) for _ in failure_indices]
 
-    # Build per-sensor arrays
+    
     sensor_data = {s: np.zeros(n_samples) for s in sensors}
-    labels      = np.zeros(n_samples, dtype=int)   # 0=normal, 1=failure
-    rul_days    = np.full(n_samples, 999.0)         # remaining useful life in days
+    labels      = np.zeros(n_samples, dtype=int)   
+    rul_days    = np.full(n_samples, 999.0)         
 
-    # Cumulative wear offset (equipment degrades slightly over its life)
+    
     wear_factor = 0.0
 
     for i in range(n_samples):
-        wear_factor = min(i / n_samples * 0.15, 0.15)  # max 15% drift over lifetime
+        wear_factor = min(i / n_samples * 0.15, 0.15)  
 
-        # Determine if we're inside a degradation window
-        deg_frac = 0.0   # 0 = nominal, 1 = at failure point
+        
+        deg_frac = 0.0   
         min_rul  = 999.0
 
         for fi, (fail_idx, deg_win) in enumerate(zip(failure_indices, deg_windows)):
             deg_start = fail_idx - deg_win
             if deg_start <= i <= fail_idx:
                 frac = (i - deg_start) / deg_win
-                # Exponential degradation curve: slow at first, accelerates near failure
                 deg_frac = max(deg_frac, frac ** 1.8)
                 rul = (fail_idx - i) / samples_per_day
                 min_rul = min(min_rul, rul)
@@ -108,9 +106,9 @@ def generate_equipment_data(equip, days=365, samples_per_day=24):
         rul_days[i] = min_rul
 
         for sensor_name, (nom_mean, nom_std, fail_delta, _) in sensors.items():
-            # Apply wear offset
+            
             worn_mean = nom_mean + nom_mean * wear_factor * np.sign(fail_delta) * 0.3
-            # Interpolate toward failure value
+           
             target = worn_mean + fail_delta * deg_frac
             noise  = np.random.normal(0, nom_std * (1 + deg_frac * 0.5))
             sensor_data[sensor_name][i] = target + noise
