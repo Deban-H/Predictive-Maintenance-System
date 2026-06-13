@@ -13,11 +13,10 @@ from typing import Dict, Optional
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "../models")
 
-# Rolling window sizes must match training
 WINDOW_SIZES = [3, 6, 12]
 MAX_HISTORY  = max(WINDOW_SIZES)
 
-# Per-equipment rolling buffer: stores last MAX_HISTORY readings
+
 _history: Dict[str, deque] = {}
 
 
@@ -42,7 +41,7 @@ def _engineer_features(history_arr: np.ndarray, sensor_cols: list) -> np.ndarray
     for the LAST row using the full history buffer.
     Returns a 1D feature vector matching training feature_cols order.
     """
-    features = list(history_arr[-1])  # raw sensor values (latest)
+    features = list(history_arr[-1])  
     for col_idx in range(len(sensor_cols)):
         col_vals = history_arr[:, col_idx]
         for w in WINDOW_SIZES:
@@ -69,11 +68,10 @@ def predict(equipment_id: str, eq_type: str, sensor_values: Dict[str, float]) ->
 
     sensor_cols = meta["sensor_cols"]
 
-    # Build ordered sensor value vector
     raw = np.array([sensor_values.get(col.replace("sensor_", ""), 0.0) for col in sensor_cols],
                    dtype=np.float32)
 
-    # Update rolling history buffer
+   
     key = equipment_id
     if key not in _history:
         _history[key] = deque([raw] * MAX_HISTORY, maxlen=MAX_HISTORY)
@@ -83,25 +81,25 @@ def predict(equipment_id: str, eq_type: str, sensor_values: Dict[str, float]) ->
     feature_vec = _engineer_features(history_arr, sensor_cols)
     X = feature_vec.reshape(1, -1)
 
-    # ── Anomaly detection ─────────────────────────────────────────────────────
+
     iso        = _load_artifact(eq_type, "isolation_forest.pkl")
     scaler_iso = _load_artifact(eq_type, "scaler_iso.pkl")
     anomaly_score = 0.5
     if iso and scaler_iso:
         X_scaled = scaler_iso.transform(X)
         raw_score = iso.decision_function(X_scaled)[0]
-        # Normalize to 0-1 (approximate; score < 0 = anomalous)
+        
         anomaly_score = float(np.clip(0.5 - raw_score, 0, 1))
 
-    # ── Failure probability ───────────────────────────────────────────────────
+    
     clf        = _load_artifact(eq_type, "classifier.pkl")
     scaler_cls = _load_artifact(eq_type, "scaler_cls.pkl")
-    failure_prob = anomaly_score * 0.3  # fallback if no classifier
+    failure_prob = anomaly_score * 0.3  
     if clf and scaler_cls:
         X_scaled     = scaler_cls.transform(X)
         failure_prob = float(clf.predict_proba(X_scaled)[0][1])
 
-    # ── RUL prediction ────────────────────────────────────────────────────────
+    
     reg        = _load_artifact(eq_type, "rul_regressor.pkl")
     scaler_rul = _load_artifact(eq_type, "scaler_rul.pkl")
     predicted_rul = None
@@ -109,10 +107,10 @@ def predict(equipment_id: str, eq_type: str, sensor_values: Dict[str, float]) ->
         X_scaled      = scaler_rul.transform(X)
         predicted_rul = float(np.clip(reg.predict(X_scaled)[0], 0, 90))
 
-    # ── Health score (composite) ──────────────────────────────────────────────
+    
     health_score = round(max(0.0, min(100.0, (1 - failure_prob) * 80 + (1 - anomaly_score) * 20)), 1)
 
-    # ── Alert level ───────────────────────────────────────────────────────────
+    
     if failure_prob >= 0.60 or (predicted_rul is not None and predicted_rul < 7):
         alert_level = "critical"
     elif failure_prob >= 0.30 or anomaly_score >= 0.55:
@@ -120,7 +118,7 @@ def predict(equipment_id: str, eq_type: str, sensor_values: Dict[str, float]) ->
     else:
         alert_level = "normal"
 
-    # ── Recommendations ───────────────────────────────────────────────────────
+    
     recs = _generate_recommendations(eq_type, alert_level, failure_prob, predicted_rul, sensor_values)
 
     return {
@@ -149,7 +147,7 @@ def _generate_recommendations(eq_type, alert_level, failure_prob, rul, sensors) 
     else:
         recs.append("Continue normal operation — run scheduled maintenance per calendar")
 
-    # Equipment-specific checks based on sensor thresholds
+    
     THRESHOLDS = {
         "compressor": {"temperature": 85, "vibration": 6.0, "pressure": 145, "current": 48},
         "pump":       {"temperature": 70, "vibration": 5.0, "flow_rate": 185, "pressure": 100},
@@ -162,12 +160,12 @@ def _generate_recommendations(eq_type, alert_level, failure_prob, rul, sensors) 
         thresh = thresholds.get(sensor)
         if thresh is None:
             continue
-        # For sensors where high = bad
+        
         if sensor not in ("flow_rate", "belt_tension", "speed", "rpm", "efficiency"):
             if val > thresh:
                 recs.append(f"Inspect {sensor.replace('_',' ')}: {val:.1f} exceeds warning threshold ({thresh})")
         else:
-            # For sensors where low = bad
+            
             if val < thresh:
                 recs.append(f"Check {sensor.replace('_',' ')}: {val:.1f} below safe threshold ({thresh})")
 
