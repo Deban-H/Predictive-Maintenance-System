@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Predictive Maintenance Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #0f1117;
+  --bg2:      #181b24;
+  --bg3:      #1e2233;
+  --border:   #2a2f45;
+  --text:     #e8eaf0;
+  --muted:    #7b82a0;
+  --green:    #22c55e;
+  --amber:    #f59e0b;
+  --red:      #ef4444;
+  --blue:     #3b82f6;
+  --radius:   10px;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.topbar h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.01em; }
+.live-pill { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--green); background: rgba(34,197,94,0.12); border-radius: 999px; padding: 4px 12px; }
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.4s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.25} }
+.layout { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 49px); }
+.sidebar { background: var(--bg2); border-right: 1px solid var(--border); padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; }
+.eq-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s; border: 1px solid transparent; }
+.eq-item:hover { background: var(--bg3); }
+.eq-item.active { background: var(--bg3); border-color: var(--blue); }
+.eq-icon { font-size: 20px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+.eq-info { flex: 1; min-width: 0; }
+.eq-name { font-size: 13px; font-weight: 500; }
+.eq-id { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.eq-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+.badge-critical { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge-warning { background: rgba(245,158,11,0.15); color: var(--amber); }
+.badge-normal { background: rgba(34,197,94,0.12); color: var(--green); }
+.badge-unknown { background: rgba(123,130,160,0.15); color: var(--muted); }
+.main { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.metric { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.metric-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.metric-value { font-size: 26px; font-weight: 600; line-height: 1; }
+.metric-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+.card-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px; }
+.sensor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sensor-block { background: var(--bg3); border-radius: 8px; padding: 10px 12px; }
+.sensor-name { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.sensor-val { font-size: 20px; font-weight: 600; }
+.sensor-unit { font-size: 11px; font-weight: 400; color: var(--muted); }
+.row3 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.alert-list { display: flex; flex-direction: column; gap: 8px; }
+.alert-item { padding: 10px 12px; border-radius: 8px; border: 1px solid; }
+.alert-crit { background: rgba(239,68,68,0.07); border-color: rgba(239,68,68,0.3); }
+.alert-warn { background: rgba(245,158,11,0.07); border-color: rgba(245,158,11,0.3); }
+.alert-title { font-size: 12px; font-weight: 600; }
+.alert-crit .alert-title { color: var(--red); }
+.alert-warn .alert-title { color: var(--amber); }
+.alert-desc { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.rec-list { display: flex; flex-direction: column; gap: 7px; }
+.rec-item { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--text); padding: 8px 10px; background: var(--bg3); border-radius: 8px; }
+.rec-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.gauge-wrap { display: flex; flex-direction: column; align-items: center; padding: 8px 0 4px; }
+.gauge-num { font-size: 30px; font-weight: 700; margin-top: -4px; }
+.gauge-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.rul-rows { display: flex; flex-direction: column; gap: 9px; margin-top: 10px; }
+.rul-row { display: flex; align-items: center; gap: 8px; }
+.rul-label { font-size: 11px; color: var(--muted); width: 92px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rul-track { flex: 1; height: 5px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.rul-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.rul-days { font-size: 11px; color: var(--muted); width: 38px; text-align: right; flex-shrink: 0; }
+.chart-wrap { position: relative; height: 180px; margin-top: 4px; }
+.health-ring { transform: rotate(-90deg); }
+.conn-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.conn-dot.connected { background: var(--green); }
+.empty { color: var(--muted); font-size: 12px; text-align: center; padding: 20px 0; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { flex-direction: row; overflow-x: auto; padding: 8px; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .row2, .row3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>⚙️ Predictive Maintenance — Live Dashboard</h1>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <div class="conn-bar"><div class="conn-dot" id="connDot"></div><span id="connLabel">Connecting…</span></div>
+    <div class="live-pill"><span class="pulse"></span>Live</div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar" id="sidebar"></div>
+
+  <div class="main">
+    <div class="metrics" id="metrics">
+      <div class="metric"><div class="metric-label">Fleet health</div><div class="metric-value" id="m-health">—</div><div class="metric-sub">avg score</div></div>
+      <div class="metric"><div class="metric-label">Critical</div><div class="metric-value" style="color:var(--red)" id="m-crit">—</div><div class="metric-sub">need immediate action</div></div>
+      <div class="metric"><div class="metric-label">Warnings</div><div class="metric-value" style="color:var(--amber)" id="m-warn">—</div><div class="metric-sub">monitor closely</div></div>
+      <div class="metric"><div class="metric-label">Healthy</div><div class="metric-value" style="color:var(--green)" id="m-good">—</div><div class="metric-sub">of 5 units</div></div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="card-title">Sensor readings — <span id="sel-name" style="color:var(--text);text-transform:none;letter-spacing:0">select equipment</span></div>
+        <div class="sensor-grid" id="sensor-grid"><div class="empty">Select equipment from the sidebar</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Failure probability & health</div>
+        <div class="gauge-wrap">
+          <svg width="140" height="80" viewBox="0 0 140 80" class="health-ring" aria-hidden="true">
+            <circle cx="70" cy="70" r="55" fill="none" stroke="#2a2f45" stroke-width="10" stroke-dasharray="172.8" stroke-dashoffset="0" stroke-linecap="round"/>
+            <circle cx="70" cy="70" r="55" fill="none" id="gaugeFill" stroke="#22c55e" stroke-width="10" stroke-dasharray="172.8" stroke-dashoffset="172.8" stroke-linecap="round" style="transition:all 0.5s"/>
+          </svg>
+          <div class="gauge-num" id="gauge-num">—%</div>
+          <div class="gauge-sub" id="gauge-sub">failure probability</div>
+        </div>
+        <div style="margin-top:12px;">
+          <div class="card-title" style="margin-bottom:8px">Remaining useful life (days)</div>
+          <div class="rul-rows" id="rul-rows"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card">
+        <div class="card-title">Sensor trend (24 readings)</div>
+        <div class="chart-wrap"><canvas id="trendChart" role="img" aria-label="Sensor trend chart for selected equipment"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Anomaly score trend</div>
+        <div class="chart-wrap"><canvas id="anomalyChart" role="img" aria-label="Anomaly score trend"></canvas></div>
+      </div>
+    </div>
+
+    <div class="row3">
+      <div class="card">
+        <div class="card-title">Active alerts</div>
+        <div class="alert-list" id="alert-list"><div class="empty">No alerts yet</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recommendations</div>
+        <div class="rec-list" id="rec-list"><div class="empty">No recommendations yet</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+const WS  = 'ws://localhost:8000/ws/live';
+
+let fleet = [];
+let selectedId = 'EQ-001';
+let trendChart = null;
+let anomalyChart = null;
+
+// Circular buffers for charts (last 24 points)
+const trendBuf   = {};  // eq_id -> {label: [], data: []}
+const anomalyBuf = {};  // eq_id -> []
+
+const ICONS = { compressor:'🔧', pump:'💧', motor:'⚡', conveyor:'🏭', turbine:'🌀' };
+
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+function initCharts() {
+  const commonOpts = {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 300 },
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { font:{size:10}, color:'#7b82a0', maxTicksLimit: 8 }, grid: { color:'rgba(255,255,255,0.04)' } },
+      y: { ticks: { font:{size:10}, color:'#7b82a0' }, grid: { color:'rgba(255,255,255,0.04)' } }
+    }
+  };
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label:'Sensor', data:[], borderColor:'#3b82f6', borderWidth:2, pointRadius:0, tension:0.35, fill:true, backgroundColor:'rgba(59,130,246,0.08)' },
+      { label:'Warning', data:[], borderColor:'#f59e0b', borderWidth:1, borderDash:[4,3], pointRadius:0 },
+      { label:'Critical', data:[], borderColor:'#ef4444', borderWidth:1, borderDash:[2,3], pointRadius:0 },
+    ]},
+    options: commonOpts,
+  });
+  anomalyChart = new Chart(document.getElementById('anomalyChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label:'Anomaly score', data:[],
+      borderColor:'#a855f7', borderWidth:2, pointRadius:0, tension:0.35,
+      fill:true, backgroundColor:'rgba(168,85,247,0.08)',
+    }]},
+    options: { ...commonOpts, scales: { ...commonOpts.scales, y: { ...commonOpts.scales.y, min:0, max:1 } } },
+  });
+}
+
+function pushBuf(buf, key, val, maxLen=24) {
+  if (!buf[key]) buf[key] = [];
+  buf[key].push(val);
+  if (buf[key].length > maxLen) buf[key].shift();
+}
+
+function updateCharts(eq) {
+  if (!eq || !trendChart) return;
+  const id = eq.id;
+  const sensors = eq.sensors || {};
+  const firstSensor = Object.keys(sensors)[0];
+  const val = sensors[firstSensor] ?? 0;
+
+  pushBuf(trendBuf, id, { val, label: new Date().toLocaleTimeString() });
+  pushBuf(anomalyBuf, id, eq.anomaly_score ?? 0);
+
+  const tBuf = trendBuf[id] || [];
+  trendChart.data.labels = tBuf.map(d => d.label);
+  trendChart.data.datasets[0].data = tBuf.map(d => d.val);
+  trendChart.data.datasets[0].label = firstSensor;
+
+  const aBuf = anomalyBuf[id] || [];
+  anomalyChart.data.labels = Array.from({length: aBuf.length}, (_, i) => '');
+  anomalyChart.data.datasets[0].data = aBuf;
+
+  trendChart.update('none');
+  anomalyChart.update('none');
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = fleet.map(eq => `
+    <div class="eq-item${eq.id === selectedId ? ' active' : ''}" onclick="selectEq('${eq.id}')">
+      <div class="eq-icon" style="background:rgba(59,130,246,0.1)">${ICONS[eq.type] || '🔩'}</div>
+      <div class="eq-info">
+        <div class="eq-name">${eq.name}</div>
+        <div class="eq-id">${eq.id}</div>
+      </div>
+      <span class="eq-badge badge-${eq.alert_level || 'unknown'}">${(eq.alert_level || 'unknown').toUpperCase()}</span>
+    </div>`).join('');
+}
+
+// ── Metrics bar ───────────────────────────────────────────────────────────────
+function renderMetrics() {
+  if (!fleet.length) return;
+  const avg = Math.round(fleet.reduce((s, e) => s + (e.health_score || 0), 0) / fleet.length);
+  document.getElementById('m-health').textContent = avg + '%';
+  document.getElementById('m-crit').textContent  = fleet.filter(e => e.alert_level === 'critical').length;
+  document.getElementById('m-warn').textContent  = fleet.filter(e => e.alert_level === 'warning').length;
+  document.getElementById('m-good').textContent  = fleet.filter(e => e.alert_level === 'normal').length;
+}
+
+// ── Selected equipment panel ──────────────────────────────────────────────────
+function renderSelected() {
+  const eq = fleet.find(e => e.id === selectedId);
+  if (!eq) return;
+
+  document.getElementById('sel-name').textContent = eq.name;
+
+  // Sensors
+  const sensors = eq.sensors || {};
+  const SENSOR_WARN = {
+    temperature: [70, 85], vibration: [4, 7], pressure: [130, 150],
+    current: [45, 52], flow_rate: [190, 170], rpm_hi: [3050, 3200],
+    belt_tension: [730, 650], speed: [1.65, 1.5], efficiency: [89, 84],
+  };
+  const sg = document.getElementById('sensor-grid');
+  sg.innerHTML = Object.entries(sensors).map(([name, val]) => {
+    const thresholds = SENSOR_WARN[name];
+    let col = '#22c55e';
+    if (thresholds) {
+      if (name === 'flow_rate' || name === 'belt_tension' || name === 'speed' || name === 'efficiency') {
+        if (val < thresholds[1]) col = '#ef4444';
+        else if (val < thresholds[0]) col = '#f59e0b';
+      } else {
+        if (val > thresholds[1]) col = '#ef4444';
+        else if (val > thresholds[0]) col = '#f59e0b';
+      }
+    }
+    const disp = Math.abs(val) > 100 ? Math.round(val) : val.toFixed(1);
+    return `<div class="sensor-block">
+      <div class="sensor-name">${name.replace(/_/g,' ')}</div>
+      <div class="sensor-val" style="color:${col}">${disp}</div>
+    </div>`;
+  }).join('');
+
+  // Gauge
+  const fp = eq.failure_prob_pct ?? 0;
+  const gaugeColor = fp >= 60 ? '#ef4444' : fp >= 30 ? '#f59e0b' : '#22c55e';
+  const circumference = 172.8;
+  const offset = circumference - (fp / 100) * circumference;
+  document.getElementById('gaugeFill').style.strokeDashoffset = offset;
+  document.getElementById('gaugeFill').style.stroke = gaugeColor;
+  document.getElementById('gauge-num').textContent = fp.toFixed(0) + '%';
+  document.getElementById('gauge-num').style.color = gaugeColor;
+  document.getElementById('gauge-sub').textContent = `failure probability — ${eq.alert_level}`;
+
+  // RUL
+  const rulEl = document.getElementById('rul-rows');
+  rulEl.innerHTML = fleet.map(e => {
+    const rul = e.predicted_rul ?? (e.health_score / 100 * 90);
+    const pct = Math.min(100, (rul / 90) * 100);
+    const c = rul < 14 ? '#ef4444' : rul < 30 ? '#f59e0b' : '#22c55e';
+    return `<div class="rul-row">
+      <div class="rul-label">${e.name}</div>
+      <div class="rul-track"><div class="rul-fill" style="width:${pct.toFixed(0)}%;background:${c}"></div></div>
+      <div class="rul-days">${rul.toFixed(0)}d</div>
+    </div>`;
+  }).join('');
+
+  // Charts
+  updateCharts(eq);
+
+  // Alerts
+  const alertEl = document.getElementById('alert-list');
+  const alerts = fleet.filter(e => e.alert_level !== 'normal').flatMap(e =>
+    (e.recommendations || []).slice(0, 2).map(r => ({ level: e.alert_level, name: e.name, msg: r }))
+  );
+  alertEl.innerHTML = alerts.length
+    ? alerts.map(a => `<div class="alert-item alert-${a.level}">
+        <div class="alert-title">${a.name}</div>
+        <div class="alert-desc">${a.msg}</div>
+      </div>`).join('')
+    : '<div class="empty">No active alerts</div>';
+
+  // Recommendations for selected
+  const recEl = document.getElementById('rec-list');
+  const recs = eq.recommendations || [];
+  recEl.innerHTML = recs.length
+    ? recs.map(r => {
+        const isHigh = r.startsWith('IMMEDIATE') || r.includes('emergency');
+        const col = isHigh ? '#ef4444' : r.includes('7 days') ? '#f59e0b' : '#22c55e';
+        return `<div class="rec-item"><div class="rec-dot" style="background:${col}"></div>${r}</div>`;
+      }).join('')
+    : '<div class="empty">No recommendations</div>';
+}
+
+function selectEq(id) {
+  selectedId = id;
+  renderSidebar();
+  renderSelected();
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connect() {
+  const ws = new WebSocket(WS);
+  const dot   = document.getElementById('connDot');
+  const label = document.getElementById('connLabel');
+
+  ws.onopen = () => {
+    dot.classList.add('connected');
+    label.textContent = 'Connected to API';
+  };
+
+  ws.onmessage = ({ data }) => {
+    const payload = JSON.parse(data);
+    fleet = payload.equipment || [];
+    renderSidebar();
+    renderMetrics();
+    renderSelected();
+  };
+
+  ws.onclose = () => {
+    dot.classList.remove('connected');
+    label.textContent = 'Reconnecting…';
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    label.textContent = 'API offline — start server';
+  };
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+initCharts();
+connect();
+</script>
+</body>
+</html>
