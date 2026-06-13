@@ -130,9 +130,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
           <div class="rul-rows" id="rul-rows"></div>
         </div>
       </div>
-    </div>
-
-    <div class="row2">
+    </div><div class="row2">
       <div class="card">
         <div class="card-title">Sensor trend (24 readings)</div>
         <div class="chart-wrap"><canvas id="trendChart" role="img" aria-label="Sensor trend chart for selected equipment"></canvas></div>
@@ -142,7 +140,6 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
         <div class="chart-wrap"><canvas id="anomalyChart" role="img" aria-label="Anomaly score trend"></canvas></div>
       </div>
     </div>
-
     <div class="row3">
       <div class="card">
         <div class="card-title">Active alerts</div>
@@ -155,7 +152,6 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     </div>
   </div>
 </div>
-
 <script>
 const API = 'http://localhost:8000';
 const WS  = 'ws://localhost:8000/ws/live';
@@ -165,13 +161,12 @@ let selectedId = 'EQ-001';
 let trendChart = null;
 let anomalyChart = null;
 
-// Circular buffers for charts (last 24 points)
-const trendBuf   = {};  // eq_id -> {label: [], data: []}
-const anomalyBuf = {};  // eq_id -> []
+
+const trendBuf   = {};  
+const anomalyBuf = {};  
 
 const ICONS = { compressor:'🔧', pump:'💧', motor:'⚡', conveyor:'🏭', turbine:'🌀' };
 
-// ── Chart helpers ─────────────────────────────────────────────────────────────
 function initCharts() {
   const commonOpts = {
     responsive: true, maintainAspectRatio: false,
@@ -231,7 +226,6 @@ function updateCharts(eq) {
   anomalyChart.update('none');
 }
 
-// ── Sidebar ───────────────────────────────────────────────────────────────────
 function renderSidebar() {
   const sb = document.getElementById('sidebar');
   sb.innerHTML = fleet.map(eq => `
@@ -245,7 +239,6 @@ function renderSidebar() {
     </div>`).join('');
 }
 
-// ── Metrics bar ───────────────────────────────────────────────────────────────
 function renderMetrics() {
   if (!fleet.length) return;
   const avg = Math.round(fleet.reduce((s, e) => s + (e.health_score || 0), 0) / fleet.length);
@@ -255,14 +248,12 @@ function renderMetrics() {
   document.getElementById('m-good').textContent  = fleet.filter(e => e.alert_level === 'normal').length;
 }
 
-// ── Selected equipment panel ──────────────────────────────────────────────────
 function renderSelected() {
   const eq = fleet.find(e => e.id === selectedId);
   if (!eq) return;
 
   document.getElementById('sel-name').textContent = eq.name;
 
-  // Sensors
   const sensors = eq.sensors || {};
   const SENSOR_WARN = {
     temperature: [70, 85], vibration: [4, 7], pressure: [130, 150],
@@ -289,7 +280,6 @@ function renderSelected() {
     </div>`;
   }).join('');
 
-  // Gauge
   const fp = eq.failure_prob_pct ?? 0;
   const gaugeColor = fp >= 60 ? '#ef4444' : fp >= 30 ? '#f59e0b' : '#22c55e';
   const circumference = 172.8;
@@ -300,7 +290,6 @@ function renderSelected() {
   document.getElementById('gauge-num').style.color = gaugeColor;
   document.getElementById('gauge-sub').textContent = `failure probability — ${eq.alert_level}`;
 
-  // RUL
   const rulEl = document.getElementById('rul-rows');
   rulEl.innerHTML = fleet.map(e => {
     const rul = e.predicted_rul ?? (e.health_score / 100 * 90);
@@ -313,10 +302,7 @@ function renderSelected() {
     </div>`;
   }).join('');
 
-  // Charts
   updateCharts(eq);
-
-  // Alerts
   const alertEl = document.getElementById('alert-list');
   const alerts = fleet.filter(e => e.alert_level !== 'normal').flatMap(e =>
     (e.recommendations || []).slice(0, 2).map(r => ({ level: e.alert_level, name: e.name, msg: r }))
@@ -328,7 +314,6 @@ function renderSelected() {
       </div>`).join('')
     : '<div class="empty">No active alerts</div>';
 
-  // Recommendations for selected
   const recEl = document.getElementById('rec-list');
   const recs = eq.recommendations || [];
   recEl.innerHTML = recs.length
@@ -346,7 +331,6 @@ function selectEq(id) {
   renderSelected();
 }
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
 function connect() {
   const ws = new WebSocket(WS);
   const dot   = document.getElementById('connDot');
@@ -376,7 +360,6 @@ function connect() {
   };
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
 initCharts();
 connect();
 </script>
